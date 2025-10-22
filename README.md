@@ -1,77 +1,87 @@
 # HNG13 DEVOPS STAGE-1 TASK
 
-This project provides a simple **Bash deployment script** that automates the setup and deployment of a Dockerized server written in Golang to **Google Cloud Platform (GCP)**.
-
-It handles:
-- Installing required dependencies  
-- Deploying your Docker container  
-- Configuring NGINX as a reverse proxy  
-- Running health checks  
-- Logging all operations safely
+This repository contains a minimal Golang web server and a Bash deployment script (deploy.sh) that automates deployment to GCP VM instance.
 
 ---
 
-## Author
-- Dominic Ifechuku (dominicdutchboy@gmail.com)
+## Quick start
 
----
+1. Make the script executable:
+```bash
+chmod +x deploy.sh
+```
 
-## Features
+2. Copy private key path on local machine to SSH base directory:
+```bash
+cp /path/to/private_key ~/.ssh/host.pem
+chmod 600 ~/.ssh/host.pem
+```
 
--  **Automatic setup** — installs Docker, Docker Compose, and Nginx  
--  **Deploys Dockerized Application** — clones repository code or pull latest changes if already exists 
--  **Nginx Reverse Proxy** — routes traffic to app container  
--  **Health Validation** — checks container, service, and HTTP response status code
--  **Logging & Error Handling** — saves output to `logs/deploy_YYYYMMDD.log` logfile
--  **Safe** — safe rerun without breaking existing setup  
+3. Run the deploy script and follow prompts:
+```bash
+./deploy.sh
+```
+
+- For a dry-run [Set DRY_RUN=true]:
+```bash
+./deploy.sh --dry-run
+```
+- To cleanup [Set CLEANUP=true]:
+```bash
+./deploy.sh --cleanup
+```
 
 ---
 
 ## Requirements
 
-- Ubuntu (20.04 or newer)
-- A **GCP Compute Engine VM**
-- SSH access to the target server
-- Git and Docker installed locally
-- A **GitHub Personal Access Token** (for private repositories)
+- Git, SSH, scp
+- Remote VM: Ubuntu (20.15)
+- Remote user with sudo privileges
+- SSH access from your machine to the VM
+- Docker
 
 ---
 
-## Usage
+## Deployment Script (deploy.sh)
 
-### Clone the Repository
-```bash
-git clone https://github.com/Dom-HTG/hng13-stage1-devops.git
-cd hng13-stage1-devops
-```
+- Configurations
+  - PORT_DEFAULT=8080 — default container application port.
+  - DRY_RUN — when true the script will only log remote commands instead of executing them.
+  - CLEANUP — when true the script performs a remote cleanup and exits.
+  - LOGFILE — all actions are appended to a timestamped logfile created locally.
 
-### Make script Executable
-```bash
-chmod +x deploy.sh
-```
+- Parameter collection (collect_params)
+  - Prompts for SSH username, SSH host/IP, SSH key path, Git repository URL, branch and internal app port.
 
-### copy SSH private key into linux-debian base directory
-```bash
-cp /mnt/c/Users/HP/Documents/host.pem ~/.ssh/host.pem
-~/.ssh/host.pem
-chmod 600 ~/.ssh/host.pem
-```
+- Remote execution wrapper (run_remote_cmd)
+  - All remote commands are executed through ssh -i "$SSH_KEY" ... unless DRY_RUN is enabled, in which case they are logged.
 
-### Deploy to GCP VM
-```bash
-./deploy.sh
-```
+- SSH check (check_ssh)
+  - Tries a simple ssh command to verify connectivity before making changes.
 
-### Verify Deployment
-```bash
-curl -I http://34.60.35.217
-```
+- Remote preparation (prepare_remote)
+  - Installs docker.io, docker-compose, nginx via apt and enables services.
+  - Adds the deploy user to the docker group (usermod -aG docker).
 
-### Cleanup
-```bash
-./deploy.sh --cleanup
-```
-### Dry-Run
-```bash
-./deploy.sh --dry-run
-```
+- Deployment (deploy_app)
+  - Locally clones or updates the repo into ./${REPO_DIR}.
+  - Copies project files to the remote /tmp via scp
+  - On the remote host:
+    - If docker-compose.yml is present, runs `docker compose up -d --build`.
+    - Otherwise builds the image with `docker build` and runs the container with `docker run -d --name ... -p hostPort:containerPort`.
+
+- Nginx configuration (configure_nginx)
+  - Reloads Nginx after validating configuration.
+
+- Validation (validate)
+  - Checks docker service status, container existence, and attempts HTTP Request
+
+- Cleanup (cleanup)
+  - Removes the container, the deployment directory, and Nginx site files, then reloads Nginx.
+
+---
+
+## Logfile configuration
+
+- Local logfile: deploy_YYYYMMDD_HHMMSS.log (created in the directory you run the script from).
