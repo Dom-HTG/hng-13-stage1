@@ -64,7 +64,12 @@ deploy_app() {
 
   if [ "$DRY_RUN" = false ]; then
     log "Copying files to remote server..."
+
+    cp -r "./${REPO_DIR}" "/tmp/${REPO_DIR}_temp"
+    rm -rf "/tmp/${REPO_DIR}_temp/.git"
+
     scp -i "$SSH_KEY" -o StrictHostKeyChecking=no -r "./${REPO_DIR}" "$SSH_USER@$SSH_HOST:/tmp/"
+    rm -rf "/tmp/${REPO_DIR}_temp"
   else
     log "[DRY-RUN] Would copy project with scp"
   fi
