@@ -70,8 +70,7 @@ deploy_app() {
   fi
 
   run_remote_cmd "
-    sudo mkdir -p $(dirname "$REMOTE_PATH") && \
-    sudo mv /tmp/${REPO_DIR} ${REMOTE_PATH} || true
+    sudo mkdir -p ${REMOTE_PATH} && sudo rm -rf ${REMOTE_PATH}/* && sudo cp -r /tmp/${REPO_DIR}/* ${REMOTE_PATH}/
   "
 
   run_remote_cmd "
