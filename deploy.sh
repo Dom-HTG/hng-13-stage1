@@ -61,23 +61,31 @@ prepare_remote() {
 # application deployment
 deploy_app() {
   log "Deploying app..."
+
   if [ "$DRY_RUN" = false ]; then
-    rsync -az --delete -e "ssh -i $SSH_KEY" --exclude '.git' "./${REPO_DIR}/" "$SSH_USER@$SSH_HOST:/tmp/${REPO_DIR}/"
+    log "Copying files to remote server..."
+    scp -i "$SSH_KEY" -r -o StrictHostKeyChecking=no --exclude='.git' "./${REPO_DIR}" "$SSH_USER@$SSH_HOST:/tmp/"
   else
-    log "[DRY-RUN] Would rsync project"
+    log "[DRY-RUN] Would copy project with scp"
   fi
 
-  run_remote_cmd "sudo mkdir -p $(dirname "$REMOTE_PATH") && sudo mv /tmp/${REPO_DIR} ${REMOTE_PATH} || true"
+  run_remote_cmd "
+    sudo mkdir -p $(dirname "$REMOTE_PATH") && \
+    sudo mv /tmp/${REPO_DIR} ${REMOTE_PATH} || true
+  "
 
-  # If docker-compose exists, use it
-  run_remote_cmd "cd ${REMOTE_PATH} && if [ -f docker-compose.yml ]; then \
-    sudo docker compose down --remove-orphans || true; \
-    sudo docker compose up -d --build; \
-  else \
-    sudo docker build -t ${REPO_DIR}:latest . && \
-    sudo docker rm -f ${REPO_DIR} || true && \
-    sudo docker run -d --name ${REPO_DIR} -p ${SERVER_PORT}:${SERVER_PORT} ${REPO_DIR}:latest; \
-  fi"
+  run_remote_cmd "
+    cd ${REMOTE_PATH} && \
+    if [ -f docker-compose.yml ]; then
+      sudo docker compose down --remove-orphans || true;
+      sudo docker compose up -d --build;
+    else
+      sudo docker build -t ${REPO_DIR}:latest . && \
+      sudo docker rm -f ${REPO_DIR} || true && \
+      sudo docker run -d --name ${REPO_DIR} -p ${SERVER_PORT}:${SERVER_PORT} ${REPO_DIR}:latest;
+    fi
+  "
+
   log "App deployed."
 }
 
@@ -131,12 +139,20 @@ main() {
     exit 0
   fi
 
-  # Clone repo locally
+  # Clone repo
   if [ ! -d "./${REPO_DIR}" ]; then
+    log "Cloning repository..."
     git clone -b "$GIT_BRANCH" "$REPO_URL" "./${REPO_DIR}" || fail "Failed to clone repo"
   else
-    (cd "./${REPO_DIR}" && git pull)
+    log "Repository already exists, pulling latest changes..."
+    (
+        cd "./${REPO_DIR}" || fail "Failed to enter repo directory"
+        git fetch origin "$GIT_BRANCH"
+        git reset --hard "origin/$GIT_BRANCH"
+    ) || fail "Failed to update repository"
+    log "Pull complete!"
   fi
+
 
   prepare_remote
   deploy_app
